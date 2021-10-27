@@ -7,6 +7,10 @@ import multer from "multer";
 import { getPosts, savePosts, savePostPic } from "../../lib/fs-tools.js";
 import fs from "fs-extra";
 
+import { pipeline } from "stream";
+import getPDFReadableStream from "../../lib/pdf-tools.js";
+import request from "request";
+import { cloudinaryStorage } from "../../lib/fs-tools.js";
 const postsRouter = express.Router();
 
 const publicFolder = path.join(process.cwd(), "public");
@@ -33,6 +37,43 @@ postsRouter.get("/:postId", async (req, res, next) => {
     } else {
       next(createHttpError(404), `Invalid Post id`);
     }
+  } catch (error) {
+    next(error);
+  }
+});
+
+postsRouter.get("/:id/downloadPDF", async (req, res, next) => {
+  try {
+    res.setHeader(
+      "Content-Disposition",
+      `attachment;filename=Blog_${req.params.id}.pdf`
+    );
+    const blogPosts = await getPosts();
+    const blogPost = blogPosts.find(
+      (blogPost) => blogPost._id === req.params.id
+    );
+    const url = blogPost.cover;
+    let imageFile;
+    request.get(url, (err, data) => {
+      imageFile = data;
+    });
+    console.log(imageFile);
+
+    const data = [
+      blogPost.title,
+      `Read time:${blogPost.readTime.value} ${blogPost.readTime.unit}`,
+      `Author - ${blogPost.author.name}`,
+      blogPost.content,
+      `Blog post written: ${blogPost.createdAt.slice(0, 10)}`,
+    ];
+    const source = getPDFReadableStream(data);
+    const destination = res;
+
+    pipeline(source, destination, (error) => {
+      if (error) {
+        next(error);
+      }
+    });
   } catch (error) {
     next(error);
   }
